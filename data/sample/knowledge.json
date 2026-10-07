@@ -1,0 +1,31 @@
+{
+  "company": {
+    "name": "Beispiel Personal GmbH",
+    "team_de": "Ihr Recruiting-Team",
+    "team_en": "Your recruiting team",
+    "phone": "+49 30 23125 099"
+  },
+  "people": {
+    "anna.beispiel@example.com": {"name": "Anna Beispiel", "role": "applicant", "status": "interview_scheduled", "note": "Mittwoch, 14.10.2026, 10:00 Uhr"},
+    "ben.muster@example.org": {"name": "Ben Muster", "role": "applicant", "status": "in_review", "note": ""},
+    "clara.mueller@example.org": {"name": "Clara Müller", "role": "applicant", "status": "interview_scheduled", "note": "Mittwoch, 14.10.2026, 14:00 Uhr"},
+    "david.demo@example.net": {"name": "David Demo", "role": "applicant", "status": "interview_scheduled", "note": "Wednesday, 14 October 2026, 10:00"},
+    "einkauf@logistik-probe.example.net": {"name": "Logistik Probe GmbH", "role": "customer", "account_manager": "Eva Demo"},
+    "eva.probe@kunde-probe.example.org": {"name": "Kunde Probe Ltd.", "role": "customer", "account_manager": "Eva Demo"},
+    "buchhaltung@kunde-demo.example.net": {"name": "Kunde Demo", "role": "customer", "account_manager": "Eva Demo"}
+  },
+  "capacity": [
+    {"keywords": ["lagerhelfer", "warehouse"], "label_de": "Lagerhelfer", "label_en": "warehouse helpers", "headcount": 6, "from": "2026-10-26"},
+    {"keywords": ["staplerfahrer", "forklift"], "label_de": "Staplerfahrer", "label_en": "forklift drivers", "headcount": 2, "from": "2026-11-09"},
+    {"keywords": ["packer", "packerin", "verpacker"], "label_de": "Packer", "label_en": "packers", "headcount": 2, "from": "2026-11-16"}
+  ],
+  "interview_slots": ["2026-10-15T09:00", "2026-10-15T14:00", "2026-10-16T10:00", "2026-10-19T11:00"],
+  "faq": [
+    {"keywords": ["öffnungszeiten", "geöffnet", "opening hours", "open"],
+     "answer_de": "Unser Büro ist Montag bis Freitag von 08:00 bis 17:00 Uhr geöffnet.",
+     "answer_en": "Our office is open Monday to Friday, 08:00 to 17:00."},
+    {"keywords": ["parkplatz", "parkplätze", "parking", "anfahrt", "auto"],
+     "answer_de": "Besucherparkplätze befinden sich direkt vor dem Haus; mit dem Auto erreichen Sie uns über die Beispielstraße.",
+     "answer_en": "Visitor parking is directly in front of the building."}
+  ]
+}

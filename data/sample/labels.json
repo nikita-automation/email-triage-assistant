@@ -1,0 +1,82 @@
+{
+  "01_status_anna_de.eml": {
+    "category": "status_inquiry",
+    "language": "de",
+    "legal": false
+  },
+  "02_status_ben_en.eml": {
+    "category": "status_inquiry",
+    "language": "en",
+    "legal": false
+  },
+  "03_availability_customer_de.eml": {
+    "category": "availability_request",
+    "language": "de",
+    "legal": false
+  },
+  "04_scheduling_clara_de.eml": {
+    "category": "scheduling",
+    "language": "de",
+    "legal": false
+  },
+  "05_complaint_customer_de.eml": {
+    "category": "complaint",
+    "language": "de",
+    "legal": false
+  },
+  "06_invoice_de.eml": {
+    "category": "invoice_billing",
+    "language": "de",
+    "legal": false
+  },
+  "07_gdpr_de.eml": {
+    "category": "data_request",
+    "language": "de",
+    "legal": false
+  },
+  "08_legal_invoice_de.eml": {
+    "category": "invoice_billing",
+    "language": "de",
+    "legal": true
+  },
+  "09_spam_en.eml": {
+    "category": "spam",
+    "language": "en",
+    "legal": false
+  },
+  "10_faq_parking_de.eml": {
+    "category": "general_question",
+    "language": "de",
+    "legal": false
+  },
+  "11_status_unknown_de.eml": {
+    "category": "status_inquiry",
+    "language": "de",
+    "legal": false
+  },
+  "12_availability_en.eml": {
+    "category": "availability_request",
+    "language": "en",
+    "legal": false
+  },
+  "13_scheduling_david_en.eml": {
+    "category": "scheduling",
+    "language": "en",
+    "legal": false
+  },
+  "14_faq_hours_en.eml": {
+    "category": "general_question",
+    "language": "en",
+    "legal": false
+  },
+  "15_invoice_payment_en.eml": {
+    "category": "invoice_billing",
+    "language": "en",
+    "legal": false
+  },
+  "16_other_de.eml": {
+    "category": "other",
+    "language": "de",
+    "legal": false
+  }
+}

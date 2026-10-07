@@ -1,0 +1,12 @@
+From: Accounts <accounts@kunde-probe.example.org>
+To: jobs@example.com
+Subject: Payment confirmation
+Date: Mon, 12 Oct 2026 14:50:00 +0200
+Message-ID: <s15@kunde-probe.example.org>
+Content-Type: text/plain; charset="utf-8"
+
+Hello,
+
+we transferred the payment for invoice 2026-0801 yesterday.
+
+Accounts Kunde Probe

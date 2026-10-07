@@ -1,0 +1,41 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Unit tests
+        run: python -m unittest discover -s tests
+        env:
+          PYTHONPATH: src
+
+      - name: Evaluation guards (rules backend) - quality on the development set, safety on both sets
+        run: |
+          python -m mailtriage eval --min-accuracy 0.95 --strict-safety
+          python -m mailtriage eval --inbox data/heldout/inbox --labels data/heldout/labels.json --strict-safety
+        env:
+          PYTHONPATH: src
+
+      - name: Triage runs end to end and drafts are idempotent
+        run: |
+          python -m mailtriage triage data/sample/inbox --drafts-dir out | tee first.txt
+          grep -q "12 created, 0 already existed" first.txt
+          python -m mailtriage triage data/sample/inbox --drafts-dir out | tee second.txt
+          grep -q "0 created, 12 already existed" second.txt
+          test "$(ls out/Drafts/cur | wc -l)" -eq 12
+          python -m mailtriage request data/sample/inbox/07_gdpr_de.eml | python -c "import json,sys; r=json.load(sys.stdin); assert r['model']=='claude-opus-5-5' and 'output_config' in r"
+        env:
+          PYTHONPATH: src
