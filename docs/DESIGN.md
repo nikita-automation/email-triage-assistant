@@ -53,14 +53,22 @@ draft is composed from the knowledge base and the injection never reaches the co
 
 ## Model-written replies: what is checked, and what is not
 
-The model gets exactly the facts the knowledge base holds *for this category* (a complaint is not handed a
-calendar), the mail wrapped as data, and rules: use only these facts, promise nothing, say "we will get back to
-you" for the rest and report the gap in `open_questions`. Everything after the call is code:
+The model gets the facts the knowledge base holds *for this category* as a numbered list (a complaint is not
+handed a calendar), the mail wrapped as data, and rules: use only these facts, promise nothing, say "we will get
+back to you" for the rest and report the gap in `open_questions`.
+
+Why the model sees the whole allowed pool instead of a keyword-matched subset: matching by keyword is the weakest
+step in the template path (plural forms, synonyms, another language), and relevance is a judgement the model makes
+well. The cost of giving it more is bounded because *code* fixes the pool per category and *code* checks the result:
+the model must cite the numbers of the facts it used, and a figure that comes from a fact it did not cite is
+flagged. This works while the pool fits comfortably into a prompt; a large knowledge base would need retrieval in
+front of it. Looking up the sender's own record stays a plain lookup by address — it is exact, free and has no
+failure mode a model could improve. Everything after the call is code:
 
 | Check | Catches | Does not catch |
 |---|---|---|
-| closed schema, length limit, signature appended by code | malformed output, a model that signs or rambles | — |
-| figure check (dates exact, incl. year; times; amounts; plain numbers) against mail + fact lines | an invented slot, a wrong day or year, a made-up headcount | a figure the sender wrote themselves (quoting is allowed) |
+| closed schema, length limit, valid fact numbers, signature appended by code | malformed output, a model that signs or rambles, citing facts that do not exist | — |
+| figure check (dates exact, incl. year; times; amounts; plain numbers) against the mail, the always-on lines and the *cited* facts | an invented slot, a wrong day or year, a made-up headcount | a figure the sender wrote themselves (quoting is allowed) |
 | percentages against fact lines only | a planted or invented discount | — |
 | commitment / deadline wording list | refund, credit note, discount, guarantee, "within 2 days", "by tomorrow", "you are hired" | a promise in words the list lacks |
 | the model's own `open_questions` / `uses_only_given_facts` | gaps the model noticed | gaps it did not notice |

@@ -119,15 +119,19 @@ A reply may state **only** what the knowledge base contains. Greetings use the s
 | `templates` (default) | fixed sentences filled with knowledge-base facts | cannot invent anything; free and offline | stiff; answers the category, not the question |
 | `claude` | a complete reply written by the model for *this* mail, in its language | answers what was actually asked | can invent or over-promise — hence the checks below |
 
-With `claude`, the model gets the mail (as data), the category and a list of **fact lines** — and only the
-fact lines that fit the category: interview slots for rescheduling, capacity for staffing requests, never a
-calendar for a complaint. The code then:
+With `claude`, the model gets the mail (as data), the category and a **numbered list of fact lines**. Code decides
+*which pool* it may see — interview slots for rescheduling, every capacity entry for staffing requests, every FAQ
+answer for questions about the office, nothing of the kind for a complaint — and the **model decides which entries
+are relevant** and lists their numbers in `facts_used`. (The keyword lookup that the template path uses missed
+synonyms such as *Schweißer* / *welders* and plurals; giving the model the whole allowed pool avoids that without an
+extra model call.) The code then:
 
-1. validates the answer against a closed schema and **appends the signature itself** (the model never signs);
-2. **fact-checks the figures**: every date, time, amount and number in the reply must occur in the sender's mail
-   or in the fact lines, else the draft is flagged `unverified_figure` and the figures are listed;
-   percentages are checked against the fact lines *only* (a percentage is nearly always a discount, and an
-   injected mail could plant one);
+1. validates the answer against a closed schema (a cited fact number that does not exist is an error) and
+   **appends the signature itself** (the model never signs);
+2. **fact-checks the figures**: every date, time, amount and number in the reply must occur in the sender's mail,
+   in the always-on lines (who is writing, our phone number) or in a fact line **the model cited** — a figure taken
+   from an entry it did not cite is flagged `unverified_figure` and listed. Percentages are checked against the
+   fact lines *only* (a percentage is nearly always a discount, and an injected mail could plant one);
 3. scans for **commitment and deadline wording** (refund, credit note, discount, guarantee, "within 2 days",
    "by tomorrow", "you are hired") → `commitment_language`;
 4. turns the model's own admissions into flags: `open_questions` → `needs_input` (each question shown as a note
@@ -203,9 +207,10 @@ Default model `claude-opus-5-5` (`--model` / `$MAILTRIAGE_MODEL`), server-side r
 PYTHONPATH=src python3 -m unittest discover -s tests
 ```
 
-141 tests: parsing (encoded names, HTML-only, multipart, threading), classifier and policy boundaries, every
+148 tests: parsing (encoded names, HTML-only, multipart, threading), classifier and policy boundaries, every
 reply type in both languages including what a reply must *not* say, Maildir and IMAP stores (fake server),
-the model backend (request shape, refusal, truncation, schema violations, prompt-injection wrapper),
+the model backend (request shape, numbered fact pools, citation rules, refusal, truncation, schema violations,
+prompt-injection wrapper),
 the guarantee that the safety nets overrule any model answer, **the reply checks** (figure extraction in German and
 English formats, wrong day / year / time / amount / percentage, commitment wording), a simulated *fooled* model whose
 promised discount is flagged, escalated mails never reaching the model, API errors and fallback, the end-to-end

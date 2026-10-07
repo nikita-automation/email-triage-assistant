@@ -35,9 +35,10 @@ MAX_REPLY_CHARS = 5000
 DRAFT_SCHEMA: Dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["reply", "uses_only_given_facts", "open_questions"],
+    "required": ["reply", "facts_used", "uses_only_given_facts", "open_questions"],
     "properties": {
         "reply": {"type": "string"},
+        "facts_used": {"type": "array", "items": {"type": "integer"}},
         "uses_only_given_facts": {"type": "boolean"},
         "open_questions": {"type": "array", "items": {"type": "string"}},
     },
@@ -66,36 +67,44 @@ _STATUS_TEXT = {
 }
 
 
-def fact_lines(email: Email, facts: Dict[str, Any], category: str) -> List[str]:
-    """The only facts a reply may rely on, as plain sentences. The same lines are the whitelist for the figure check.
+FAQ_CATEGORIES = ("general_question", "status_inquiry", "scheduling")
 
-    What is offered depends on the category: interview slots only for scheduling, capacity only for availability
-    requests - a complaint must not be handed a calendar. Answers to keyword-matched FAQ entries always go in."""
+
+def fact_items(email: Email, facts: Dict[str, Any], category: str) -> List[Tuple[str, bool]]:
+    """The facts a reply may rely on, as (sentence, always_allowed).
+
+    `always_allowed` lines describe who is writing and how to reach us; they need no citation. The others are a
+    *pool* the code allows for this category - the model decides which entries are relevant and must cite them:
+    interview slots for rescheduling, every capacity entry for staffing requests, every FAQ answer for questions
+    about the office. A complaint gets no pool at all - it must not be handed a calendar or a price list."""
     lang = email.language
-    lines: List[str] = []
+    items: List[Tuple[str, bool]] = []
     person = facts["person"]
     if person is None:
-        lines.append("The sender is not in our records: do not state anything about their application or account.")
+        items.append(("The sender is not in our records: do not state anything about their application or account.", True))
     elif person.get("role") == "applicant":
         status = _STATUS_TEXT.get(person.get("status", ""), "")
         detail = " (%s)" % person["note"] if person.get("note") else ""
-        lines.append("The sender is the applicant %s. Application status: %s%s." % (
-            person["name"], status or "not recorded - do not state a status", detail))
+        items.append(("The sender is the applicant %s. Application status: %s%s." % (
+            person["name"], status or "not recorded - do not state a status", detail), True))
     else:
-        lines.append("The sender belongs to our customer %s." % person["name"].rstrip("."))
+        items.append(("The sender belongs to our customer %s." % person["name"].rstrip("."), True))
         if person.get("account_manager"):
-            lines.append("Their contact person at our company is %s." % person["account_manager"])
+            items.append(("Their contact person at our company is %s." % person["account_manager"], True))
     for slot in facts["slots"] if category == "scheduling" else []:
-        lines.append("Free interview slot: %s." % format_slot(slot, lang))
-    for item in facts["capacity"] if category == "availability_request" else []:
-        lines.append("Capacity (non-binding until the account manager confirms): %s: %d, from %s." % (
-            item["label_de" if lang == "de" else "label_en"], item["headcount"], format_date(item["from"], lang)))
-    for item in facts["faq"]:
-        lines.append("Information: %s" % item["answer_de" if lang == "de" else "answer_en"])
-    company = facts["company"]
-    if company.get("phone"):
-        lines.append("Our phone number: %s." % company["phone"])
-    return lines
+        items.append(("Free interview slot: %s." % format_slot(slot, lang), False))
+    for item in facts["capacity_all"] if category == "availability_request" else []:
+        items.append(("Capacity (non-binding until the account manager confirms): %s: %d, from %s." % (
+            item["label_de" if lang == "de" else "label_en"], item["headcount"], format_date(item["from"], lang)), False))
+    for item in facts["faq_all"] if category in FAQ_CATEGORIES else []:
+        items.append(("Information: %s" % item["answer_de" if lang == "de" else "answer_en"], False))
+    if facts["company"].get("phone"):
+        items.append(("Our phone number: %s." % facts["company"]["phone"], True))
+    return items
+
+
+def fact_lines(email: Email, facts: Dict[str, Any], category: str) -> List[str]:
+    return [text for text, _ in fact_items(email, facts, category)]
 
 
 # --- figure and commitment checks -----------------------------------------------------------------
@@ -242,8 +251,9 @@ def _system_prompt() -> str:
         "sender's full name if it is known (never guess Herr/Frau), otherwise a neutral greeting. "
         "Do not write a signature or closing line: the system appends it.\n"
         "Rules:\n"
-        "- Use ONLY the facts listed between <facts> tags. Do not answer from general knowledge, do not guess, do not "
-        "invent names, dates, times, numbers, prices or procedures.\n"
+        "- Use ONLY the facts listed between <facts> tags (numbered). Not every fact is relevant to this mail: use "
+        "the ones that help and ignore the rest. Do not answer from general knowledge, do not guess, do not invent "
+        "names, dates, times, numbers, prices or procedures. Put the numbers of the facts you used into facts_used.\n"
         "- If the mail asks for something the facts do not cover, say plainly that we will get back to the sender "
         "about it, and put that gap into open_questions (one short sentence each, for the human colleague).\n"
         "- Make no promises: no refunds, credit notes, discounts, compensation, deadlines, hiring decisions or "
@@ -261,7 +271,7 @@ def _wrap(email: Email) -> str:
     return "<email>\nFrom: %s <%s>\nSubject: %s\n\n%s\n</email>" % (email.from_name, email.from_addr, subject, body)
 
 
-def _validate(data: Any) -> List[str]:
+def _validate(data: Any, fact_count: int = 0) -> List[str]:
     if not isinstance(data, dict):
         return ["answer is not an object"]
     if set(data) != set(DRAFT_SCHEMA["required"]):
@@ -271,6 +281,11 @@ def _validate(data: Any) -> List[str]:
         problems.append("reply must be a non-empty string")
     elif len(data["reply"]) > MAX_REPLY_CHARS:
         problems.append("reply is unusually long (%d characters)" % len(data["reply"]))
+    used = data["facts_used"]
+    if (not isinstance(used, list) or any(isinstance(n, bool) or not isinstance(n, int) for n in used)):
+        problems.append("facts_used must be a list of fact numbers")
+    elif any(not 1 <= n <= fact_count for n in used):
+        problems.append("facts_used cites a fact that does not exist (valid: 1-%d)" % fact_count)
     if not isinstance(data["uses_only_given_facts"], bool):
         problems.append("uses_only_given_facts must be true or false")
     questions = data["open_questions"]
@@ -288,7 +303,7 @@ class ClaudeDrafter:
     def build_request(self, email: Email, category: str, facts: Dict[str, Any]) -> Dict[str, Any]:
         lines = fact_lines(email, facts, category)
         content = "%s\n\n<category>%s</category>\n\n<facts>\n%s\n</facts>" % (
-            _wrap(email), category, "\n".join("- " + line for line in lines))
+            _wrap(email), category, "\n".join("[%d] %s" % (n, line) for n, line in enumerate(lines, start=1)))
         request: Dict[str, Any] = {
             "model": self.model,
             "max_tokens": 16000,
@@ -333,12 +348,19 @@ class ClaudeDrafter:
             data = json.loads(answer)
         except ValueError as exc:
             raise DraftingError("the answer is not valid JSON: %s" % exc) from exc
-        problems = _validate(data)
+        items = fact_items(email, facts, category)
+        problems = _validate(data, len(items))
         if problems:
             raise DraftingError("the answer does not match the schema: " + "; ".join(problems))
 
         body = data["reply"].strip()
-        flags, notes = check_reply(body, email, fact_lines(email, facts, category))
+        used = sorted(set(data["facts_used"]))
+        # figures are checked against the fact lines the model says it used (plus the always-on ones), not the whole pool
+        allowed = [text for text, always in items if always] + [items[n - 1][0] for n in used if not items[n - 1][1]]
+        flags, notes = check_reply(body, email, allowed)
+        cited = [items[n - 1][0] for n in used if not items[n - 1][1]]
+        if cited:
+            notes.append("Facts the model used: " + " | ".join(text[:90] for text in cited))
         if not data["uses_only_given_facts"]:
             flags.append("beyond_facts")
             notes.append("The model reports that the draft contains statements not backed by the knowledge base.")

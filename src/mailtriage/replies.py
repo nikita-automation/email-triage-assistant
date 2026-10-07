@@ -55,7 +55,9 @@ def gather_facts(email: Email, kb: Dict[str, Any]) -> Dict[str, Any]:
     after = email.date[:10] if email.date else ""
     slots = [s for s in kb.get("interview_slots", []) if s[:10] > after][:3]
     return {"person": person, "capacity": capacity, "faq": faq, "slots": slots,
-            "company": kb.get("company", {})}
+            "company": kb.get("company", {}),
+            # the whole lists, for the model path: it picks what is relevant instead of a keyword match
+            "capacity_all": kb.get("capacity", []), "faq_all": kb.get("faq", [])}
 
 
 def _addressee(email: Email, facts: Dict[str, Any]) -> str:
