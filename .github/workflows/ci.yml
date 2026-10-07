@@ -37,5 +37,6 @@ jobs:
           grep -q "0 created, 12 already existed" second.txt
           test "$(ls out/Drafts/cur | wc -l)" -eq 12
           python -m mailtriage request data/sample/inbox/07_gdpr_de.eml | python -c "import json,sys; r=json.load(sys.stdin); assert r['model']=='claude-opus-5-5' and 'output_config' in r"
+          python -m mailtriage request data/sample/inbox/05_complaint_customer_de.eml --stage draft | python -c "import json,sys; r=json.load(sys.stdin); c=r['messages'][0]['content']; assert r['output_config']['effort']=='high' and 'Free interview slot' not in c"
         env:
           PYTHONPATH: src

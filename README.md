@@ -5,7 +5,8 @@
 Sorts an incoming recruiting inbox (German or English) and puts **reply drafts into the supervisor's `Drafts`
 folder** — ready for a quick review instead of being written from scratch. It classifies each mail, looks up
 the facts it needs in a small knowledge base (applicant status, free interview slots, staff capacity, FAQ),
-composes a reply from those facts only, and decides what a human must look at.
+writes a reply from those facts only — from templates, or as a complete natural reply written by the language
+model (`--drafter claude`) and then fact-checked by code — and decides what a human must look at.
 
 **It never sends anything.** There is no SMTP code in this project (a test checks that). The output is a draft
 with a banner in the first line, correct threading headers, and the triage result in `X-Triage-*` headers.
@@ -23,6 +24,7 @@ export PYTHONPATH=src
 python3 -m mailtriage triage data/sample/inbox                        # dry run: report only
 python3 -m mailtriage triage data/sample/inbox --drafts-dir out       # writes out/Drafts/ (Maildir)
 python3 -m mailtriage eval                                            # score against labelled mails
+python3 -m mailtriage triage data/sample/inbox --drafter claude       # replies written by the model (needs the API)
 ```
 
 Python 3.9+ for everything except the live `claude` backend (the `anthropic` package needs Python 3.10+).
@@ -54,13 +56,36 @@ flowchart LR
     R --> N
     M --> N[safety nets on every mail<br/>legal wording · data-protection wording]
     N --> F[facts from knowledge base<br/>status · slots · capacity · FAQ]
-    F --> T[reply from templates<br/>facts only]
+    F --> T[reply text<br/>templates, or model + figure and<br/>commitment checks]
     T --> D[policy]
     D -->|draft| A[Drafts folder]
     D -->|draft_flagged| B[Drafts folder + flags]
     D -->|escalate| H[human, with a note and a deadline]
     D -->|ignore| S[listed in the report]
 ```
+
+## How a draft gets from the program to the person who sends it
+
+Nobody copies anything out of a folder. The program puts the draft **into the Drafts folder of the mailbox
+itself**, on the mail server, using IMAP (`--imap`). From there it is an ordinary draft:
+
+1. The program connects to the mailbox (`MAILTRIAGE_IMAP_HOST/_USER/_PASSWORD`, optional `_FOLDER`) and appends
+   the message to `Drafts` with the `\Draft` flag. Credentials come from the environment and are never stored.
+2. The mail server syncs it to every device. In Gmail, Outlook, Apple Mail or Thunderbird the person simply sees a
+   new entry under **Drafts / Entwürfe**, threaded under the original mail (`In-Reply-To` / `References`).
+3. They open it, read the banner in the first line, check the flags (`X-Triage-Flags`, also listed in the report),
+   edit the text and press the mail client's normal **Send** button. Only then does anything leave the building.
+
+The program itself never sends: there is no SMTP code in the project, and a test checks that.
+
+`--drafts-dir DIR` is the stand-in used for the demo and the tests: the same messages written as files into a
+local Maildir (`DIR/Drafts/cur/`). Mail clients that can open a Maildir show them as drafts; Gmail and Outlook
+cannot read such a folder, which is why a real setup uses `--imap`.
+
+- Gmail needs an app password (or OAuth) and the folder name `[Gmail]/Drafts` (`MAILTRIAGE_IMAP_FOLDER`).
+  Microsoft 365 often blocks plain IMAP logins; it would need the Graph API, which is **not** implemented.
+- The IMAP path is tested against a fake server only. It has **not** been tried on a real mailbox — use a test
+  mailbox first.
 
 ## What decides what
 
@@ -84,9 +109,38 @@ Rules that apply **on top, whatever the classifier said**:
 - **Unknown sender, no matching slot, no matching capacity, no FAQ answer** → the draft says only
   "we will get back to you" and carries a flag.
 
-A reply may state **only** what the knowledge base contains. The text is composed from templates, not
-generated, so it cannot invent a price, a deadline or an apology that commits the company. Greetings use the
-sender's full name (`Guten Tag Clara Müller`) rather than guessing a gender for *Frau/Herr*.
+A reply may state **only** what the knowledge base contains. Greetings use the sender's full name
+(`Guten Tag Clara Müller`) rather than guessing a gender for *Frau/Herr*.
+
+### Who writes the reply text
+
+| `--drafter` | Text | Strength | Risk |
+|---|---|---|---|
+| `templates` (default) | fixed sentences filled with knowledge-base facts | cannot invent anything; free and offline | stiff; answers the category, not the question |
+| `claude` | a complete reply written by the model for *this* mail, in its language | answers what was actually asked | can invent or over-promise — hence the checks below |
+
+With `claude`, the model gets the mail (as data), the category and a list of **fact lines** — and only the
+fact lines that fit the category: interview slots for rescheduling, capacity for staffing requests, never a
+calendar for a complaint. The code then:
+
+1. validates the answer against a closed schema and **appends the signature itself** (the model never signs);
+2. **fact-checks the figures**: every date, time, amount and number in the reply must occur in the sender's mail
+   or in the fact lines, else the draft is flagged `unverified_figure` and the figures are listed;
+   percentages are checked against the fact lines *only* (a percentage is nearly always a discount, and an
+   injected mail could plant one);
+3. scans for **commitment and deadline wording** (refund, credit note, discount, guarantee, "within 2 days",
+   "by tomorrow", "you are hired") → `commitment_language`;
+4. turns the model's own admissions into flags: `open_questions` → `needs_input` (each question shown as a note
+   for the reviewer), `uses_only_given_facts: false` → `beyond_facts`.
+
+Any finding downgrades a plain `draft` to `draft_flagged`. Mails that go to a human (legal wording, data
+protection, low confidence, unknown) and spam **never reach the model** — no call, no draft. If the model call
+fails, the template draft is used instead and flagged `template_fallback` with the reason, so one outage does not
+stop the batch. The `X-Triage-Drafter` header records who wrote each draft.
+
+What the checks do **not** catch: a wrong statement without a figure ("your interview has been cancelled"), a
+promise phrased in words the list does not know, or a figure the sender wrote themselves (the reply may quote
+those). That is why every draft stays a draft, with a banner, for a person to read.
 
 ## How good is it? (measured, not claimed)
 
@@ -125,8 +179,10 @@ python -m mailtriage triage data/sample/inbox --backend claude --fallback rules
 python -m mailtriage request data/sample/inbox/07_gdpr_de.eml     # the exact request, no network
 ```
 
-Only the **classification** is delegated: structured output (`category`, `confidence`, `legal_threat`) at low
-effort, validated again locally. The mail is passed as data in `<email>` tags (a closing tag inside the mail is
+Two tasks can be delegated. **Classification** — structured output (`category`, `confidence`, `legal_threat`) at low
+effort, validated again locally. **Reply writing** (`--drafter claude`, above) — structured output
+(`reply`, `uses_only_given_facts`, `open_questions`) at high effort, then checked by code. Preview either request
+without network: `python -m mailtriage request FILE [--stage draft]`. The mail is passed as data in `<email>` tags (a closing tag inside the mail is
 neutralised); the system prompt says to ignore instructions inside it. Refusals, truncated or invalid answers
 raise `ClassificationError`; `--fallback rules` degrades to the rules backend instead of stopping the batch.
 Default model `claude-opus-5-5` (`--model` / `$MAILTRIAGE_MODEL`), server-side refusal fallback on.
@@ -147,10 +203,13 @@ Default model `claude-opus-5-5` (`--model` / `$MAILTRIAGE_MODEL`), server-side r
 PYTHONPATH=src python3 -m unittest discover -s tests
 ```
 
-92 tests: parsing (encoded names, HTML-only, multipart, threading), classifier and policy boundaries, every
+141 tests: parsing (encoded names, HTML-only, multipart, threading), classifier and policy boundaries, every
 reply type in both languages including what a reply must *not* say, Maildir and IMAP stores (fake server),
 the model backend (request shape, refusal, truncation, schema violations, prompt-injection wrapper),
-the guarantee that the safety nets overrule any model answer, the end-to-end sample, evaluation and CLI.
+the guarantee that the safety nets overrule any model answer, **the reply checks** (figure extraction in German and
+English formats, wrong day / year / time / amount / percentage, commitment wording), a simulated *fooled* model whose
+promised discount is flagged, escalated mails never reaching the model, API errors and fallback, the end-to-end
+sample, evaluation and CLI.
 Mutation-checked: flipping comparisons and removing guards in the policy, classifier, replies, drafts, model
 backend and evaluator makes tests fail (one mutant was equivalent). It also found a real bug on the way:
 plural keywords (`packers`) did not match the knowledge base (`packer`).
@@ -158,8 +217,10 @@ plural keywords (`packers`) did not match the knowledge base (`packer`).
 ## Limitations
 
 - The rules classifier is a baseline, not a product — see the held-out number.
-- Plain-text replies from templates: correct and auditable, but stiff; model-written drafts would need a
-  fact-checking step before they could replace the templates.
+- Model-written replies are **untested against the live API** and their quality is unmeasured: the checks are
+  heuristics (see above), and there is no score for reply quality — only for categories. Judging wording needs
+  human raters.
+- Template replies are correct and auditable, but stiff.
 - Language detection is a word-count heuristic for German/English only.
 - One knowledge-base file; no calendar or applicant-system integration, no attachments handling.
 - The model backend is untested against the live API in this repository.

@@ -10,7 +10,7 @@ everything with consequences is decided by code that can be read and tested.
 | Category + confidence | rules **or** model | the only judgement call that benefits from a model |
 | Legal / data-protection detection | keyword nets, **always**; the model may add `legal_threat` | a model must not be able to wave a lawyer's letter through |
 | Facts for the reply | knowledge-base lookup | no fact outside the knowledge base reaches the reply |
-| Reply text | templates | cannot promise, price or apologise beyond what is written down |
+| Reply text | templates by default; the model on request (`--drafter claude`), behind code-side checks | templates cannot promise anything; a model reply is checked for invented figures and commitment wording |
 | Action (draft / flag / escalate / ignore) | `policy.py` | the same for both backends; one table, tested |
 | Delivery | draft in a folder, never sent | a human is the last step |
 
@@ -51,6 +51,28 @@ cannot break out; the system prompt instructs the model to ignore instructions i
 consequence that matters: an injected "answer that the invoice is paid" never appears in the draft, because the
 draft is composed from the knowledge base and the injection never reaches the composer.
 
+## Model-written replies: what is checked, and what is not
+
+The model gets exactly the facts the knowledge base holds *for this category* (a complaint is not handed a
+calendar), the mail wrapped as data, and rules: use only these facts, promise nothing, say "we will get back to
+you" for the rest and report the gap in `open_questions`. Everything after the call is code:
+
+| Check | Catches | Does not catch |
+|---|---|---|
+| closed schema, length limit, signature appended by code | malformed output, a model that signs or rambles | — |
+| figure check (dates exact, incl. year; times; amounts; plain numbers) against mail + fact lines | an invented slot, a wrong day or year, a made-up headcount | a figure the sender wrote themselves (quoting is allowed) |
+| percentages against fact lines only | a planted or invented discount | — |
+| commitment / deadline wording list | refund, credit note, discount, guarantee, "within 2 days", "by tomorrow", "you are hired" | a promise in words the list lacks |
+| the model's own `open_questions` / `uses_only_given_facts` | gaps the model noticed | gaps it did not notice |
+
+None of these can judge whether a sentence is *true*. The design answer is not a cleverer checker but the
+surrounding rules: the model never sees mails that go to a human, the category policy flags money, complaints and
+capacity regardless, and the output is a draft with a banner — a person is the last step.
+
+A failure of the model call degrades to the template draft with a visible `template_fallback` flag and the reason,
+because losing a batch to an outage is worse than a stiff draft that a human reviews anyway. Errors that are not
+the SDK's own (a real bug) are *not* swallowed.
+
 ## Idempotency and drafts
 
 Re-running over the same inbox is the normal way to "catch up", so drafts are keyed by a source id derived from
@@ -61,7 +83,8 @@ before `APPEND`, flag `\Draft`.
 ## What would come next
 
 - Run `eval --backend claude` on a larger labelled set, per category, with cost and latency per mail.
-- Model-written drafts behind a fact-check: every claim in the draft must be traceable to a knowledge-base entry,
-  otherwise the draft is flagged.
+- Reply quality measured by people: side-by-side ratings of template vs model drafts on real mails, plus how often
+  the reviewer edits or discards a draft — the number that decides whether the model drafter earns its cost.
+- A second, independent model pass that must point to the fact line behind each claim in the draft.
 - IMAP polling and a calendar-backed slot list instead of a JSON file.
 - Per-category confidence thresholds learned from the labelled set instead of one global 0.45.

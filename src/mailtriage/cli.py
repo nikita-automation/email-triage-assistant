@@ -15,10 +15,12 @@ from typing import Any, Dict, List, Optional
 
 from . import __version__
 from .claude import ClaudeClassifier, ClassificationError
+from .drafting import ClaudeDrafter
 from .drafts import ImapDraftStore, MaildirDraftStore, build_draft
 from .evaluate import evaluate, format_result
 from .mailparse import parse_dir, parse_file
 from .models import Result
+from .replies import gather_facts
 from .triage import rules_classifier, triage
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -82,7 +84,8 @@ def _report_json(results: List[Result], errors: List[str]) -> str:
     return json.dumps({
         "mails": [{"file": os.path.basename(r.email.path), "from": r.email.from_addr, "subject": r.email.subject,
                    "language": r.email.language, "category": r.category, "confidence": r.confidence,
-                   "action": r.action, "flags": r.flags, "notes": r.notes, "draft": r.draft_status or None}
+                   "action": r.action, "flags": r.flags, "notes": r.notes, "drafter": r.drafter if r.reply else None,
+                   "draft": r.draft_status or None}
                   for r in results],
         "unreadable": errors}, indent=2, ensure_ascii=False) + "\n"
 
@@ -105,6 +108,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                     help="append drafts to the IMAP Drafts folder (MAILTRIAGE_IMAP_HOST/_USER/_PASSWORD/_FOLDER)")
     tr.add_argument("--mailbox", default="jobs@example.com", help="From address on the drafts")
     tr.add_argument("--format", choices=("text", "json"), default="text")
+    tr.add_argument("--drafter", choices=("templates", "claude"), default="templates",
+                    help="who writes the reply text: fixed templates (default) or the language model")
     backend_options(tr)
 
     ev = sub.add_parser("eval", help="score the pipeline against labelled mails")
@@ -117,13 +122,21 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     rq = sub.add_parser("request", help="print the exact request the claude backend would send (no network)")
     rq.add_argument("file")
+    rq.add_argument("--stage", choices=("classify", "draft"), default="classify",
+                    help="classify = category request; draft = reply-writing request (needs --kb)")
+    rq.add_argument("--kb", default=os.path.join(SAMPLE, "knowledge.json"))
     rq.add_argument("--model")
 
     args = parser.parse_args(argv)
 
     if args.command == "request":
-        print(json.dumps(ClaudeClassifier(model=args.model).build_request(parse_file(args.file)), indent=2,
-                         ensure_ascii=False))
+        email = parse_file(args.file)
+        if args.stage == "draft":
+            category, _, _ = rules_classifier(email)
+            request = ClaudeDrafter(model=args.model).build_request(email, category, gather_facts(email, _load_kb(args.kb)))
+        else:
+            request = ClaudeClassifier(model=args.model).build_request(email)
+        print(json.dumps(request, indent=2, ensure_ascii=False))
         return 0
 
     classifier = _classifier(args.backend, args.fallback, args.model)
@@ -150,14 +163,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         except KeyError as exc:
             parser.error("--imap needs the environment variable %s" % exc.args[0])
 
+    drafter = ClaudeDrafter(model=args.model) if args.drafter == "claude" else None
     emails, errors = parse_dir(args.inbox)
     results: List[Result] = []
     try:
         for email in emails:
-            result = triage(email, kb, classifier)
+            result = triage(email, kb, classifier, drafter)
             if store is not None and result.reply:
                 message = build_draft(email, result.reply, result.category, result.confidence, result.flags,
-                                      args.mailbox, datetime.now(timezone.utc))
+                                      args.mailbox, datetime.now(timezone.utc), result.drafter)
                 result.draft_status = store.save(message, email.source_id)
             results.append(result)
     finally:

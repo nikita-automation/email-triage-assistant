@@ -32,6 +32,7 @@ class Result:
     notes: List[str] = field(default_factory=list)
     reply: Optional[str] = None
     draft_status: str = ""  # created | exists | '' (no draft)
+    drafter: str = "templates"  # who wrote the reply text: templates | claude
     context: Dict[str, Any] = field(default_factory=dict)
 
     @property

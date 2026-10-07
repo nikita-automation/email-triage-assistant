@@ -19,6 +19,7 @@ import os
 from typing import Any, Dict, Optional, Tuple
 
 from .classify import CATEGORIES
+from .drafting import api_errors
 from .models import Email
 
 DEFAULT_MODEL = "claude-opus-5-5"
@@ -104,7 +105,10 @@ class ClaudeClassifier:
         request = self.build_request(email)
         client = self._get_client()
         endpoint = client.beta.messages if "betas" in request else client.messages
-        response = endpoint.create(**request)
+        try:
+            response = endpoint.create(**request)
+        except api_errors() as exc:                     # the SDK has already retried 429 / 5xx / connection errors
+            raise ClassificationError("API error: %s" % exc) from exc
         stop_reason = getattr(response, "stop_reason", None)
         if stop_reason == "refusal":
             raise ClassificationError("the model declined to process this mail")

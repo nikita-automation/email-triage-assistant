@@ -77,7 +77,7 @@ def _greeting(email: Email, facts: Dict[str, Any]) -> str:
     return "Hello %s," % name if name else "Hello,"
 
 
-def _closing(email: Email, facts: Dict[str, Any]) -> str:
+def closing(email: Email, facts: Dict[str, Any]) -> str:
     company = facts["company"]
     if email.language == "de":
         return "Mit freundlichen Grüßen\n%s\n%s" % (company.get("team_de", ""), company.get("name", ""))
@@ -163,5 +163,5 @@ def compose(email: Email, category: str, facts: Dict[str, Any]) -> Tuple[Optiona
     if category in ("data_request", "spam", "other"):
         return None, []
     lines, flags = _body(category, email, facts)
-    text = "%s\n\n%s\n\n%s" % (_greeting(email, facts), "\n".join(lines), _closing(email, facts))
+    text = "%s\n\n%s\n\n%s" % (_greeting(email, facts), "\n".join(lines), closing(email, facts))
     return text, flags

@@ -30,7 +30,7 @@ _WROTE = {"de": "Am %s schrieb %s:", "en": "On %s, %s wrote:"}
 
 
 def build_draft(email: Email, reply: str, category: str, confidence: float, flags: List[str],
-                mailbox: str, now: datetime) -> EmailMessage:
+                mailbox: str, now: datetime, drafter: str = "templates") -> EmailMessage:
     message = EmailMessage()
     subject = email.subject or ""
     message["Subject"] = subject if subject.lower().startswith(("re:", "aw:")) else "Re: " + subject
@@ -46,6 +46,7 @@ def build_draft(email: Email, reply: str, category: str, confidence: float, flag
     message["X-Triage-Category"] = category
     message["X-Triage-Confidence"] = "%.2f" % confidence
     message["X-Triage-Flags"] = ",".join(flags) if flags else "none"
+    message["X-Triage-Drafter"] = drafter
 
     quoted = "\n".join("> " + line for line in email.body.splitlines()[:15])
     when = email.date[:10] if email.date else "?"
