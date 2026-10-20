@@ -2,6 +2,8 @@
 
 [![ci](https://github.com/nikita-automation/email-triage-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/nikita-automation/email-triage-assistant/actions/workflows/ci.yml)
 
+> **Kurz auf Deutsch:** Sortiert ein Recruiting-Postfach (Deutsch oder Englisch) und legt Antwortentwürfe im Ordner Entwürfe ab, verschickt aber nie selbst. Fakten kommen aus einer kleinen Wissensbasis, Sicherheitsnetze für Recht und DSGVO entscheiden, was ein Mensch ansehen muss. Regel- und Claude-Backend, Auswertung auf einem zurückgehaltenen Testset. Erfundene Demodaten.
+
 Sorts an incoming recruiting inbox (German or English) and puts **reply drafts into the supervisor's `Drafts`
 folder** — ready for a quick review instead of being written from scratch. It classifies each mail, looks up
 the facts it needs in a small knowledge base (applicant status, free interview slots, staff capacity, FAQ),
@@ -233,3 +235,7 @@ plural keywords (`packers`) did not match the knowledge base (`packer`).
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+---
+
+**Autor:** Nikita Rozumnyi · KI-Automatisierung für Unternehmen · [nikita-automation.de](https://nikita-automation.de) · [LinkedIn](https://www.linkedin.com/in/nikita-rozumniy) · [alle Projekte](https://github.com/nikita-automation)
